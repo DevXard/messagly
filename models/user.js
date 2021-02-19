@@ -28,25 +28,23 @@ class User {
     const hashedPassword = await bcrypt.hash(password, BCRYPT_WORK_FACTOR)
 
     const result = await db.query(`
-      INSERT INTO users (username, password, first_name, last_name, phone, join_at)
+      INSERT INTO users (username, password, first_name, last_name, phone, join_at, last_login_at)
       VALUES
-      ($1, $2, $3, $4, $5, current_timestamp)
+      ($1, $2, $3, $4, $5, current_timestamp, current_timestamp)
       RETURNING *
     `, [username, hashedPassword, first_name, last_name, phone])
-    const newU = result.rows[0]
-    return new User(newU.username, newU.password, newU.first_name, newU.last_name, newU.phone)
+    return result.rows[0]
    }
 
   /** Authenticate: is this username/password valid? Returns boolean. */
 
   static async authenticate(username, password) { 
-    console.log(username, password)
     const result = await db.query(`
       SELECT * FROM users WHERE username = $1
     `, [username])
 
     const user = result.rows[0]
-
+    
     if(user){
       if(await bcrypt.compare(password, user.password)){
         return true
@@ -72,8 +70,7 @@ class User {
     const result = await db.query(`
       SELECT username, first_name, last_name, phone FROM users  
     `)
-    const users = result.rows.map(u => new User(u.username, u.first_name, u.last_name, u.phone))
-    return users
+    return result.rows
    }
 
   /** Get: get user by username
@@ -91,8 +88,11 @@ class User {
       FROM users 
       WHERE username = $1
     `, [username])
-    const user = result.rows[0]
-    return new User(user.username, user.first_name, user.last_name, user.phone, user.join_at, user.last_login_at)
+
+    if(!result.rows[0]){
+      throw new ExpressError(`No such user: ${username}`, 404);
+    }
+    return result.rows[0]
   }
 
   /** Return messages from this user.
@@ -105,10 +105,24 @@ class User {
 
   static async messagesFrom(username) {
     const result = await db.query(`
-      SELECT id, to_username, body, sent_at, read_at
-      FROM messages
-      WHERE to_username = $1
+    SELECT m.id, m.to_username, m.body, m.sent_at, m.read_at, u.first_name, u.last_name, u.phone 
+    FROM messages AS m 
+    JOIN users AS u ON m.to_username = u.username 
+    WHERE from_username = $1 
     `, [username])
+    const messages = result.rows.map(m => ({
+      id: m.id,
+      to_user: {
+        first_name: m.first_name,
+        last_name: m.last_name,
+        phone: m.phone,
+        username: m.to_username,
+      },
+      body: m.body,
+      sent_at: m.sent_at,
+      read_at: m.read_at
+    }))
+    return messages
    }
 
   /** Return messages to this user.
@@ -121,10 +135,24 @@ class User {
 
   static async messagesTo(username) {
     const result = await db.query(`
-      SELECT id, from_username, body, sent_at, read_at
-      FROM messages
-      WHERE from_username = $1
+    SELECT m.id, m.from_username, m.body, m.sent_at, m.read_at, u.first_name, u.last_name, u.phone 
+    FROM messages AS m 
+    JOIN users AS u ON m.from_username = u.username 
+    WHERE to_username = $1 
     `, [username])
+    const messages = result.rows.map(m => ({
+      id: m.id,
+      from_user: {
+        first_name: m.first_name,
+        last_name: m.last_name,
+        phone: m.phone,
+        username: m.from_username,
+      },
+      body: m.body,
+      sent_at: m.sent_at,
+      read_at: m.read_at
+    }))
+    return messages
    }
 }
 

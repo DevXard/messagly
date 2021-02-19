@@ -1,3 +1,8 @@
+const express = require("express");
+const router = new express.Router();
+const ExpressError = require("../expressError");
+const Message = require("../models/message")
+const { ensureLoggedIn, ensureCorrectUser } = require("../middleware/auth")
 /** GET /:id - get detail of message.
  *
  * => {message: {id,
@@ -11,6 +16,14 @@
  *
  **/
 
+router.get('/:id', ensureCorrectUser, async (req, res, next) => {
+    try {
+        const result = await Message.get(req.params.id)
+        return res.json({message: result})
+    }catch (err) {
+        return next(err);
+    }
+})
 
 /** POST / - post message.
  *
@@ -18,6 +31,19 @@
  *   {message: {id, from_username, to_username, body, sent_at}}
  *
  **/
+
+router.post('/', ensureCorrectUser, async (req, res, next) => {
+    try{
+        const result =await Message.create(req.body)
+        if(result){
+            return res.json({msg: "Message created"})
+        }else{
+            throw new ExpressError("Missing data for message", 400)
+        }
+    }catch (err) {
+        return next(err);
+    }
+})
 
 
 /** POST/:id/read - mark message as read:
@@ -28,3 +54,13 @@
  *
  **/
 
+router.post('/:id/read', ensureCorrectUser, async (req, res, next) => {
+    try {
+        const result =await Message.markRead(req.params.id)
+        return res.json({msg: "Message marked as read"})
+    }catch (err) {
+        return next(err);
+    }
+})
+
+module.exports = router
